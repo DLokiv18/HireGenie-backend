@@ -52,22 +52,45 @@ class Resumeview(APIView):
     parser_classes = [MultiPartParser, FormParser]
     
     def post(self,request):
-        import traceback
-        print("USER:", request.user)
-        print("USER ID:", request.user.id)
-        serializer=ResumeSerializers(data=request.data)
-        if serializer.is_valid():
-            try:
-                 obj=serializer.save(user=request.user)
-                 print("Saved ID:", obj.id)
-                 return Response({"message":"Saved Successfully",
-                             "data":serializer.data})
-            except Exception:
-                  traceback.print_exc()
-                  raise
+        print("POST method called")
+        try:
+            serializer = ResumeSerializers(data=request.data)
+
+            if serializer.is_valid():
+                obj = serializer.save(user=request.user)
+                print("Saved:", obj.id)
+                return Response({"message": "Saved Successfully"})
+
+            return Response(serializer.errors, status=400)
+
+       except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response(
+                {
+                "error": type(e).__name__,
+                "message": str(e)
+            },
+            status=500
+            )
+
+     
+        # import traceback
+        # print("USER:", request.user)
+        # print("USER ID:", request.user.id)
+        # serializer=ResumeSerializers(data=request.data)
+        # if serializer.is_valid():
+        #     try:
+        #          obj=serializer.save(user=request.user)
+        #          print("Saved ID:", obj.id)
+        #          return Response({"message":"Saved Successfully",
+        #                      "data":serializer.data})
+        #     except Exception:
+        #           traceback.print_exc()
+        #           raise
             
-        else:
-            return Response(serializer.errors)    
+        # else:
+        #     return Response(serializer.errors)    
         
     # 2.Get All resumes And Single Resume:
     # We cannot write Two get Methods inside the Same Class so we can write Like this 
