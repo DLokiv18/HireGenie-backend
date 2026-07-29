@@ -49,6 +49,7 @@ class Loginview(APIView):
 class Resumeview(APIView):
     # 1.Upload the Resume 
     permission_classes=[IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
     def post(self,request):
         print("USER:", request.user)
         print("USER ID:", request.user.id)
