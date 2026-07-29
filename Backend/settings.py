@@ -180,6 +180,9 @@ SIMPLE_JWT = {
 AUTH_USER_MODEL = "Project.Users"
 
 STORAGES = {
+      "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
