@@ -38,6 +38,7 @@ DEBUG = os.getenv("DEBUG", "False") == "True"
 ALLOWED_HOSTS = [
       "localhost",
     "127.0.0.1",
+     "hiregenie-backend-k0kc.onrender.com"
 ]
 
 
@@ -158,7 +159,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS = [
+    "https://hire-genie-frontend.vercel.app",
+]
 
 
 
