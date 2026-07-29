@@ -58,7 +58,7 @@ class Resumeview(APIView):
         serializer=ResumeSerializers(data=request.data)
         if serializer.is_valid():
             try:
-                 odj=serializer.save(user=request.user)
+                 obj=serializer.save(user=request.user)
                  print("Saved ID:", obj.id)
                  return Response({"message":"Saved Successfully",
                              "data":serializer.data})
