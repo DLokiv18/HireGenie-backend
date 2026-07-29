@@ -52,7 +52,7 @@ class Resumeview(APIView):
     # parser_classes = [MultiPartParser, FormParser]
     
     def post(self,request):
-        return Response({"message": "POST reached"})
+       
         print("POST method called")
         try:
             serializer = ResumeSerializers(data=request.data)
