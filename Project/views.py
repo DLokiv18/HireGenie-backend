@@ -167,7 +167,7 @@ class ResumeAnalyser(APIView):
             return Response({"message":"Job Description Not Found"})
         try:
             resume=Resume.objects.get(id=resume_id)
-        except resume.DoesNotExist:
+        except Resume.DoesNotExist:
             return Response({"message":"The Resume is Not Existed"})
         try:
             doc=fitz.open(resume.file.path)
