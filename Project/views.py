@@ -50,14 +50,21 @@ class Resumeview(APIView):
     # 1.Upload the Resume 
     permission_classes=[IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
+    
     def post(self,request):
+        import traceback
         print("USER:", request.user)
         print("USER ID:", request.user.id)
         serializer=ResumeSerializers(data=request.data)
         if serializer.is_valid():
-            serializer.save(user=request.user)
-            return Response({"message":"Saved Successfully",
+            try:
+                 odj=serializer.save(user=request.user)
+                 print("Saved ID:", obj.id)
+                 return Response({"message":"Saved Successfully",
                              "data":serializer.data})
+            except Exception:
+                  traceback.print_exc()
+                  raise
             
         else:
             return Response(serializer.errors)    
