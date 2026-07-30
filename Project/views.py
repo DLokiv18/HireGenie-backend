@@ -47,9 +47,9 @@ class Loginview(APIView):
             return Response({"message":"Login Failed Due to Invalid Credentials"})
 
 class Resumeview(APIView):
-    # 1.Upload the Resume 
-    # permission_classes=[IsAuthenticated]
-    # parser_classes = [MultiPartParser, FormParser]
+   
+    permission_classes=[IsAuthenticated]
+   
     
     def post(self,request):
        
@@ -168,8 +168,8 @@ class Dashboard(APIView):
     permission_classes=[IsAuthenticated]
     def get(self,request):
         users=Users.objects.count()
-        resumes=Resume.objects.count()
-        jobs=Applications.objects.count()
+        resumes=Resume.objects.filter(user=request.user).count()
+        jobs=Applications.objects.filter(user=request.user).count()
         data={
             "total_users":users,
             "total_resumes":resumes,
@@ -338,7 +338,7 @@ class JobTracker(APIView):
             serializer.save(user=request.user)
             return Response({"data":serializer.data})
     def get(self,request):
-        applications=Applications.objects.all()
+        applications=Applications.objects.filter(user=request.user)
         serializer=ApplicationsSerializers(applications,many=True)
         
         return Response({"Data":serializer.data})    
