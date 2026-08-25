@@ -200,7 +200,11 @@ class ResumeAnalyser(APIView):
                 resume_text+=page.get_text()
             doc.close()    
         except Exception as e:
-            return Response({"message":"error"})  
+            import traceback
+            traceback.print_exc()
+            return Response({
+                "message": str(e)
+             }, status=500)    
         
         Resume_Text=resume_text.lower()
         Job_Text=Job_description.lower()
