@@ -244,7 +244,7 @@ Do not wrap the JSON in ```json fences.
         try:
 
             completion = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model="openai/gpt-oss-120b",
                 messages=[
                     {
                         "role": "user",
@@ -316,7 +316,7 @@ Return only JSON.
 """  
         try:
             completion=client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=[
                     {
                         "role":"user",
@@ -534,7 +534,7 @@ class TestGroq(APIView):
     def get(self, request):
         try:
             completion = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model="openai/gpt-oss-120b",
                 messages=[
                     {
                         "role": "user",
