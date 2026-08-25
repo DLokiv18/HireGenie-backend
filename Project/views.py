@@ -204,7 +204,7 @@ class ResumeAnalyser(APIView):
             traceback.print_exc()
             return Response({
                 "message": str(e)
-             }, status=500)    
+            }, status=500)    
         
         Resume_Text=resume_text.lower()
         Job_Text=Job_description.lower()
