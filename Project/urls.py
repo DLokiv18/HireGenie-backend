@@ -12,10 +12,14 @@ from .views import (
     JobTracker,
     Notification,
     Interview,
-    JobBoard
+    JobBoard,
+    health_check
 )
 
 urlpatterns = [
+
+    # Health Check
+    path("health/", health_check, name="health"),
 
     # Authentication
     path("register/", Registerview.as_view(), name="register"),
