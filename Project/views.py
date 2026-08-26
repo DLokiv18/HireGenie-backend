@@ -11,9 +11,16 @@ from rest_framework.permissions import IsAuthenticated
 import os 
 import requests
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.decorators import api_view
 from groq import Groq
 from django.conf import settings
 client = Groq(api_key=settings.GROQ_API_KEY)
+
+# Health Check API
+@api_view(["GET"])
+def health_check(request):
+    return Response({"status": "ok"})
+
 
 
 class Registerview(APIView):
