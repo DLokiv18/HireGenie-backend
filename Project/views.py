@@ -419,6 +419,13 @@ class JobBoard(APIView):
 
             # Convert response to JSON
             data = response.json()
+            print("========== JOB BOARD DEBUG ==========")
+            print("QUERY:", query)
+            print("STATUS CODE:", response.status_code)
+            print("JSEARCH RESPONSE:", data)
+            print("DATA TYPE:", type(data.get("data")))
+            print("DATA LENGTH:", len(data.get("data", [])))
+            print("====================================")
 
             # Check JSearch response
             if data.get("status") != "OK":
