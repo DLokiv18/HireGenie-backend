@@ -356,7 +356,8 @@ class JobTracker(APIView):
 
 class JobBoard(APIView):
     def post(self,request):
-        try:
+       try:
+            # Get request data
             Skills = request.data.get("Skills")
             Location = request.data.get("Location")
             Freshness = request.data.get("Freshness")
@@ -383,13 +384,17 @@ class JobBoard(APIView):
                     "error": "Experience is required."
                 }, status=400)
 
+            # Clean values
+            Skills = str(Skills).strip()
+            Location = str(Location).strip()
             Freshness = str(Freshness).lower().strip()
+            Experience = str(Experience).strip()
 
             # Create search query
-            if str(Experience) == "0":
+            if Experience == "0":
                 query = f"{Skills} Fresher jobs in {Location}"
 
-            elif str(Experience) == "1":
+            elif Experience == "1":
                 query = f"{Skills} 1 year experience jobs in {Location}"
 
             else:
@@ -422,7 +427,7 @@ class JobBoard(APIView):
 
             print("JSEARCH STATUS:", response.status_code)
 
-            # Handle HTTP errors from RapidAPI
+            # Handle HTTP errors
             if response.status_code != 200:
                 print("JSEARCH ERROR:", response.text)
 
@@ -431,6 +436,7 @@ class JobBoard(APIView):
                     "status_code": response.status_code
                 }, status=502)
 
+            # Convert response to JSON
             data = response.json()
 
             print("JSEARCH STATUS MESSAGE:", data.get("status"))
@@ -440,18 +446,36 @@ class JobBoard(APIView):
                 print("JSEARCH API ERROR:", data)
 
                 return Response({
-                    "error": data.get("error", "Unable to fetch jobs."),
-                    "details": data
+                    "error": data.get(
+                        "error",
+                        "Unable to fetch jobs."
+                    )
                 }, status=502)
 
-            # JSearch returns jobs inside data
+            # Get jobs from JSearch
             jobs_data = data.get("data", [])
+
+            # Make sure data is actually a list
+            if not isinstance(jobs_data, list):
+                print(
+                    "UNEXPECTED DATA TYPE:",
+                    type(jobs_data)
+                )
+
+                return Response({
+                    "error": "Unexpected response received from job search service."
+                }, status=502)
 
             print("JOBS FOUND:", len(jobs_data))
 
             jobs = []
 
             for job in jobs_data:
+
+                # Safety check
+                if not isinstance(job, dict):
+                    print("SKIPPING INVALID JOB:", job)
+                    continue
 
                 # Apply URL
                 apply_url = (
@@ -461,15 +485,20 @@ class JobBoard(APIView):
                     or ""
                 )
 
+                # Check apply options
                 if not apply_url:
                     options = job.get("apply_options") or []
 
-                    if options:
-                        apply_url = options[0].get(
-                            "apply_link",
-                            ""
-                        )
+                    if isinstance(options, list) and options:
+                        first_option = options[0]
 
+                        if isinstance(first_option, dict):
+                            apply_url = first_option.get(
+                                "apply_link",
+                                ""
+                            )
+
+                # Build job object
                 jobs.append({
 
                     "company":
@@ -516,11 +545,14 @@ class JobBoard(APIView):
                     "apply_url": apply_url
                 })
 
+            print("VALID JOBS:", len(jobs))
+
             return Response({
                 "recommended_jobs": jobs[:5],
                 "all_jobs": jobs
             })
 
+        # JSearch timeout
         except requests.exceptions.Timeout:
 
             print("JSEARCH TIMEOUT")
@@ -529,6 +561,7 @@ class JobBoard(APIView):
                 "error": "Job search took too long. Please try again."
             }, status=504)
 
+        # Network/request error
         except requests.exceptions.RequestException as e:
 
             print("REQUEST ERROR:", str(e))
@@ -537,6 +570,7 @@ class JobBoard(APIView):
                 "error": "Unable to connect to the job search service."
             }, status=502)
 
+        # Unexpected error
         except Exception as e:
 
             print("JOB BOARD ERROR:", str(e))
@@ -544,7 +578,7 @@ class JobBoard(APIView):
             return Response({
                 "error": str(e)
             }, status=500)
-               
+            
 class Notification(APIView):
     def post(self,request):
         serializer=NotificationsSerializers(data=request.data)
