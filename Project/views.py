@@ -1,6 +1,5 @@
 from django.shortcuts import render,redirect
 import json
-import time
 from .models import Users,Resume,Job,Applications,Notifications
 from .serializers import UsersSerializers,ResumeSerializers,JobSerializers,ApplicationsSerializers,NotificationsSerializers
 from rest_framework.views import APIView
@@ -358,19 +357,23 @@ class JobTracker(APIView):
 class JobBoard(APIView):
     def post(self,request):
       try:
-            # Guard against non-dict request bodies
+
+            # ---------------------------------
+            # 1. Validate request body
+            # ---------------------------------
             if not isinstance(request.data, dict):
                 return Response({
                     "error": "Invalid request format. Expected JSON object."
                 }, status=400)
 
-            # Get request data
             Skills = request.data.get("Skills")
             Location = request.data.get("Location")
             Freshness = request.data.get("Freshness")
             Experience = request.data.get("Experience")
 
-            # Validate required fields
+            # ---------------------------------
+            # 2. Validate required fields
+            # ---------------------------------
             if not Skills:
                 return Response({
                     "error": "Skill/Role is required."
@@ -391,20 +394,34 @@ class JobBoard(APIView):
                     "error": "Experience is required."
                 }, status=400)
 
-            # Clean values
+            # ---------------------------------
+            # 3. Convert values to strings
+            # ---------------------------------
             Skills = str(Skills).strip()
             Location = str(Location).strip()
             Freshness = str(Freshness).lower().strip()
             Experience = str(Experience).strip()
 
-            # Create search query
+            # ---------------------------------
+            # 4. Create search query
+            # ---------------------------------
             if Experience == "0":
                 query = f"{Skills} Fresher jobs in {Location}"
+
             elif Experience == "1":
                 query = f"{Skills} 1 year experience jobs in {Location}"
+
             else:
                 query = f"{Skills} {Experience} years experience jobs in {Location}"
 
+            print("================================")
+            print("JOB SEARCH QUERY:", query)
+            print("FRESHNESS:", Freshness)
+            print("================================")
+
+            # ---------------------------------
+            # 5. JSearch API
+            # ---------------------------------
             url = "https://jsearch.p.rapidapi.com/search-v2"
 
             querystring = {
@@ -419,39 +436,23 @@ class JobBoard(APIView):
                 "x-rapidapi-host": "jsearch.p.rapidapi.com"
             }
 
-            print("JOB SEARCH QUERY:", query)
-            print("FRESHNESS:", Freshness)
-
-            # Call JSearch with retry on timeout
-            max_retries = 2
-            response = None
-            last_timeout_error = False
-
-            for attempt in range(max_retries + 1):
-                try:
-                    response = requests.get(
-                        url,
-                        headers=headers,
-                        params=querystring,
-                        timeout=30  # increased from 15
-                    )
-                    last_timeout_error = False
-                    break
-                except requests.exceptions.Timeout:
-                    print(f"JSEARCH TIMEOUT (attempt {attempt + 1}/{max_retries + 1})")
-                    last_timeout_error = True
-                    if attempt < max_retries:
-                        time.sleep(1)
-
-            if last_timeout_error:
-                return Response({
-                    "error": "Job search took too long. Please try again."
-                }, status=504)
+            # ---------------------------------
+            # 6. Call JSearch
+            # ---------------------------------
+            response = requests.get(
+                url,
+                headers=headers,
+                params=querystring,
+                timeout=30
+            )
 
             print("JSEARCH STATUS:", response.status_code)
 
-            # Handle HTTP errors
+            # ---------------------------------
+            # 7. HTTP error
+            # ---------------------------------
             if response.status_code != 200:
+
                 print("JSEARCH ERROR:", response.text)
 
                 return Response({
@@ -459,29 +460,49 @@ class JobBoard(APIView):
                     "status_code": response.status_code
                 }, status=502)
 
-            # Convert response to JSON safely
+            # ---------------------------------
+            # 8. Parse JSON
+            # ---------------------------------
             try:
                 data = response.json()
+
             except ValueError:
-                print("JSEARCH INVALID JSON:", response.text[:500])
+
+                print("INVALID JSEARCH JSON:")
+                print(response.text[:1000])
+
                 return Response({
-                    "error": "Job search service returned an invalid response."
+                    "error": "Job search service returned invalid JSON."
                 }, status=502)
 
-            # Guard against non-dict top-level responses
+            # ---------------------------------
+            # 9. Validate top-level response
+            # ---------------------------------
             if not isinstance(data, dict):
-                print("UNEXPECTED TOP-LEVEL RESPONSE TYPE:", type(data), "BODY:", str(data)[:500])
+
+                print(
+                    "UNEXPECTED RESPONSE TYPE:",
+                    type(data)
+                )
+
                 return Response({
-                    "error": "Unexpected response received from job search service."
+                    "error": "Unexpected response from job search service."
                 }, status=502)
 
             print("JSEARCH STATUS MESSAGE:", data.get("status"))
 
-            # Handle JSearch API errors
+            # ---------------------------------
+            # 10. Check API status
+            # ---------------------------------
             if data.get("status") != "OK":
+
                 print("JSEARCH API ERROR:", data)
 
-                error_msg = data.get("error", "Unable to fetch jobs.")
+                error_msg = data.get(
+                    "error",
+                    "Unable to fetch jobs."
+                )
+
                 if not isinstance(error_msg, str):
                     error_msg = "Unable to fetch jobs."
 
@@ -489,92 +510,190 @@ class JobBoard(APIView):
                     "error": error_msg
                 }, status=502)
 
-            # Get jobs from JSearch
+            # ---------------------------------
+            # 11. Get jobs
+            # ---------------------------------
             jobs_data = data.get("data", [])
 
-            # Make sure data is actually a list
             if not isinstance(jobs_data, list):
-                print("UNEXPECTED DATA TYPE:", type(jobs_data))
+
+                print(
+                    "UNEXPECTED DATA TYPE:",
+                    type(jobs_data)
+                )
 
                 return Response({
-                    "error": "Unexpected response received from job search service."
+                    "error": "Unexpected jobs data received."
                 }, status=502)
 
-            print("JOBS FOUND:", len(jobs_data))
+            print("TOTAL JOBS FROM JSEARCH:", len(jobs_data))
 
             jobs = []
 
-            for job in jobs_data:
+            # ---------------------------------
+            # 12. Process each job
+            # ---------------------------------
+            for index, job in enumerate(jobs_data):
 
-                # Safety check
-                if not isinstance(job, dict):
-                    print("SKIPPING INVALID JOB:", job)
-                    continue
+                try:
 
-                # Apply URL
-                apply_url = (
-                    job.get("job_apply_link")
-                    or job.get("applyLink")
-                    or job.get("jobUrl")
-                    or ""
-                )
+                    # Make sure job is dictionary
+                    if not isinstance(job, dict):
 
-                # Check apply options
-                if not apply_url:
-                    options = job.get("apply_options") or []
+                        print(
+                            f"SKIPPING JOB {index}:",
+                            type(job),
+                            job
+                        )
 
-                    if isinstance(options, list) and options:
-                        first_option = options[0]
+                        continue
 
-                        if isinstance(first_option, dict):
-                            apply_url = first_option.get("apply_link", "")
+                    # ---------------------------------
+                    # Company
+                    # ---------------------------------
+                    company = job.get("employer_name", "")
 
-                # Build job object
-                jobs.append({
-                    "company":
-                        job.get("employer_name")
-                        or job.get("companyName")
-                        or "",
+                    if not isinstance(company, str):
+                        company = str(company)
 
-                    "title":
-                        job.get("job_title")
-                        or job.get("jobTitle")
-                        or "",
+                    # ---------------------------------
+                    # Title
+                    # ---------------------------------
+                    title = job.get("job_title", "")
 
-                    "location":
-                        job.get("job_city")
-                        or job.get("locationName")
-                        or "",
+                    if not isinstance(title, str):
+                        title = str(title)
 
-                    "employment_type":
-                        job.get("job_employment_type")
-                        or job.get("jobType")
-                        or "",
+                    # ---------------------------------
+                    # Location
+                    # ---------------------------------
+                    job_city = job.get("job_city", "")
 
-                    "salary":
+                    if not isinstance(job_city, str):
+                        job_city = str(job_city)
+
+                    # ---------------------------------
+                    # Employment Type
+                    # ---------------------------------
+                    employment_type = job.get(
+                        "job_employment_type",
+                        ""
+                    )
+
+                    if not isinstance(employment_type, str):
+                        employment_type = str(employment_type)
+
+                    # ---------------------------------
+                    # Salary
+                    # ---------------------------------
+                    salary = (
                         job.get("job_salary_string")
                         or job.get("job_salary")
-                        or job.get("salary")
-                        or "Not Disclosed",
+                        or "Not Disclosed"
+                    )
 
-                    "portal":
-                        job.get("job_publisher")
-                        or job.get("source")
-                        or "",
+                    if not isinstance(salary, str):
+                        salary = str(salary)
 
-                    "description":
-                        job.get("job_description")
-                        or job.get("description")
-                        or "",
+                    # ---------------------------------
+                    # Portal
+                    # ---------------------------------
+                    portal = job.get(
+                        "job_publisher",
+                        ""
+                    )
 
-                    "posted":
-                        job.get("job_posted_at")
-                        or job.get("postedDate")
-                        or "",
+                    if not isinstance(portal, str):
+                        portal = str(portal)
 
-                    "apply_url": apply_url
-                })
+                    # ---------------------------------
+                    # Description
+                    # ---------------------------------
+                    description = job.get(
+                        "job_description",
+                        ""
+                    )
 
+                    if not isinstance(description, str):
+                        description = str(description)
+
+                    # ---------------------------------
+                    # Posted Date
+                    # ---------------------------------
+                    posted = job.get(
+                        "job_posted_at",
+                        ""
+                    )
+
+                    if not isinstance(posted, str):
+                        posted = str(posted)
+
+                    # ---------------------------------
+                    # Apply URL
+                    # ---------------------------------
+                    apply_url = (
+                        job.get("job_apply_link")
+                        or job.get("applyLink")
+                        or job.get("jobUrl")
+                        or ""
+                    )
+
+                    # Make sure URL is string
+                    if not isinstance(apply_url, str):
+                        apply_url = ""
+
+                    # ---------------------------------
+                    # Check apply_options
+                    # ---------------------------------
+                    if not apply_url:
+
+                        options = job.get(
+                            "apply_options",
+                            []
+                        )
+
+                        if isinstance(options, list):
+
+                            for option in options:
+
+                                if isinstance(option, dict):
+
+                                    link = option.get(
+                                        "apply_link",
+                                        ""
+                                    )
+
+                                    if isinstance(link, str) and link:
+                                        apply_url = link
+                                        break
+
+                    # ---------------------------------
+                    # Add job
+                    # ---------------------------------
+                    jobs.append({
+                        "company": company,
+                        "title": title,
+                        "location": job_city,
+                        "employment_type": employment_type,
+                        "salary": salary,
+                        "portal": portal,
+                        "description": description,
+                        "posted": posted,
+                        "apply_url": apply_url
+                    })
+
+                except Exception as job_error:
+
+                    print(
+                        f"ERROR PROCESSING JOB {index}:",
+                        str(job_error)
+                    )
+
+                    continue
+
+            # ---------------------------------
+            # 13. Final response
+            # ---------------------------------
             print("VALID JOBS:", len(jobs))
 
             return Response({
@@ -582,20 +701,43 @@ class JobBoard(APIView):
                 "all_jobs": jobs
             })
 
-        # Network/request error (non-timeout)
-        except requests.exceptions.RequestException as e:
-            print("REQUEST ERROR:", str(e))
+        # ---------------------------------
+        # Network errors
+        # ---------------------------------
+        except requests.exceptions.Timeout:
+
             return Response({
-                "error": "Unable to connect to the job search service."
+                "error": "Job search service took too long to respond."
+            }, status=504)
+
+        except requests.exceptions.RequestException as e:
+
+            print("REQUEST ERROR:", str(e))
+
+            return Response({
+                "error": "Unable to connect to job search service."
             }, status=502)
 
+        # ---------------------------------
         # Unexpected error
+        # ---------------------------------
         except Exception as e:
-            print("JOB BOARD ERROR:", str(e))
+
+            import traceback
+
+            traceback.print_exc()
+
+            print(
+                "JOB BOARD ERROR:",
+                type(e).__name__,
+                str(e)
+            )
+
             return Response({
                 "error": str(e)
             }, status=500)
-            
+
+
 class Notification(APIView):
     def post(self,request):
         serializer=NotificationsSerializers(data=request.data)
