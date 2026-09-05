@@ -1,5 +1,6 @@
 from django.shortcuts import render,redirect
 import json
+import time
 from .models import Users,Resume,Job,Applications,Notifications
 from .serializers import UsersSerializers,ResumeSerializers,JobSerializers,ApplicationsSerializers,NotificationsSerializers
 from rest_framework.views import APIView
@@ -356,7 +357,13 @@ class JobTracker(APIView):
 
 class JobBoard(APIView):
     def post(self,request):
-       try:
+      try:
+            # Guard against non-dict request bodies
+            if not isinstance(request.data, dict):
+                return Response({
+                    "error": "Invalid request format. Expected JSON object."
+                }, status=400)
+
             # Get request data
             Skills = request.data.get("Skills")
             Location = request.data.get("Location")
@@ -415,13 +422,31 @@ class JobBoard(APIView):
             print("JOB SEARCH QUERY:", query)
             print("FRESHNESS:", Freshness)
 
-            # Call JSearch
-            response = requests.get(
-                url,
-                headers=headers,
-                params=querystring,
-                timeout=15
-            )
+            # Call JSearch with retry on timeout
+            max_retries = 2
+            response = None
+            last_timeout_error = False
+
+            for attempt in range(max_retries + 1):
+                try:
+                    response = requests.get(
+                        url,
+                        headers=headers,
+                        params=querystring,
+                        timeout=30  # increased from 15
+                    )
+                    last_timeout_error = False
+                    break
+                except requests.exceptions.Timeout:
+                    print(f"JSEARCH TIMEOUT (attempt {attempt + 1}/{max_retries + 1})")
+                    last_timeout_error = True
+                    if attempt < max_retries:
+                        time.sleep(1)
+
+            if last_timeout_error:
+                return Response({
+                    "error": "Job search took too long. Please try again."
+                }, status=504)
 
             print("JSEARCH STATUS:", response.status_code)
 
@@ -444,8 +469,6 @@ class JobBoard(APIView):
                 }, status=502)
 
             # Guard against non-dict top-level responses
-            # (e.g. RapidAPI sometimes returns a plain error string
-            # like "Invalid API key" or "You are not subscribed to this API.")
             if not isinstance(data, dict):
                 print("UNEXPECTED TOP-LEVEL RESPONSE TYPE:", type(data), "BODY:", str(data)[:500])
                 return Response({
@@ -459,7 +482,6 @@ class JobBoard(APIView):
                 print("JSEARCH API ERROR:", data)
 
                 error_msg = data.get("error", "Unable to fetch jobs.")
-                # error field itself could theoretically be a dict/list
                 if not isinstance(error_msg, str):
                     error_msg = "Unable to fetch jobs."
 
@@ -560,14 +582,7 @@ class JobBoard(APIView):
                 "all_jobs": jobs
             })
 
-        # JSearch timeout
-        except requests.exceptions.Timeout:
-            print("JSEARCH TIMEOUT")
-            return Response({
-                "error": "Job search took too long. Please try again."
-            }, status=504)
-
-        # Network/request error
+        # Network/request error (non-timeout)
         except requests.exceptions.RequestException as e:
             print("REQUEST ERROR:", str(e))
             return Response({
