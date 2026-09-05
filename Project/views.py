@@ -356,48 +356,98 @@ class JobTracker(APIView):
 
 class JobBoard(APIView):
     def post(self,request):
-        Skills=request.data.get("skill")
-        Location=request.data.get("Location")
-        Freshness=request.data.get("Freshness")
-        Freshness=Freshness.lower()
-        Experience=request.data.get("Experience")
-        # query = f"{Skills} {Experience} jobs in {Location}"
-        if str(Experience) == "0":
-            query = f"{Skills} Fresher jobs in {Location}"
-        elif str(Experience) == "1":
-            query = f"{Skills} 1 year experience jobs in {Location}"
-        else:
-            query = f"{Skills} {Experience} years experience jobs in {Location}"
-
-        url = "https://jsearch.p.rapidapi.com/search-v2"
-
-        querystring = {
-            "query": query,
-            "country": "in",
-            "num_pages": "1",
-            "date_posted": Freshness
-        }
-
-        headers = {
-            "x-rapidapi-key": settings.RAPIDAPI_KEY,
-            "x-rapidapi-host": "jsearch.p.rapidapi.com",
-             "Content-Type": "application/json"
-        }
         try:
+            Skills = request.data.get("skill")
+            Location = request.data.get("Location")
+            Freshness = request.data.get("Freshness")
+            Experience = request.data.get("Experience")
 
+            # Validate required fields
+            if not Skills:
+                return Response({
+                    "error": "Skill/Role is required."
+                }, status=400)
+
+            if not Location:
+                return Response({
+                    "error": "Location is required."
+                }, status=400)
+
+            if not Freshness:
+                return Response({
+                    "error": "Freshness is required."
+                }, status=400)
+
+            if Experience is None:
+                return Response({
+                    "error": "Experience is required."
+                }, status=400)
+
+            Freshness = str(Freshness).lower().strip()
+
+            # Create search query
+            if str(Experience) == "0":
+                query = f"{Skills} Fresher jobs in {Location}"
+
+            elif str(Experience) == "1":
+                query = f"{Skills} 1 year experience jobs in {Location}"
+
+            else:
+                query = f"{Skills} {Experience} years experience jobs in {Location}"
+
+            url = "https://jsearch.p.rapidapi.com/search-v2"
+
+            querystring = {
+                "query": query,
+                "country": "in",
+                "num_pages": "1",
+                "date_posted": Freshness
+            }
+
+            headers = {
+                "x-rapidapi-key": settings.RAPIDAPI_KEY,
+                "x-rapidapi-host": "jsearch.p.rapidapi.com"
+            }
+
+            print("JOB SEARCH QUERY:", query)
+            print("FRESHNESS:", Freshness)
+
+            # Call JSearch
             response = requests.get(
                 url,
                 headers=headers,
-                params=querystring
+                params=querystring,
+                timeout=15
             )
 
-            data = response.json()
-           
-            
-            if data.get("status") != "OK":
-                return Response(data)
+            print("JSEARCH STATUS:", response.status_code)
 
+            # Handle HTTP errors from RapidAPI
+            if response.status_code != 200:
+                print("JSEARCH ERROR:", response.text)
+
+                return Response({
+                    "error": "Job search service is temporarily unavailable.",
+                    "status_code": response.status_code
+                }, status=502)
+
+            data = response.json()
+
+            print("JSEARCH STATUS MESSAGE:", data.get("status"))
+
+            # Handle JSearch API errors
+            if data.get("status") != "OK":
+                print("JSEARCH API ERROR:", data)
+
+                return Response({
+                    "error": data.get("error", "Unable to fetch jobs."),
+                    "details": data
+                }, status=502)
+
+            # JSearch returns jobs inside data
             jobs_data = data.get("data", [])
+
+            print("JOBS FOUND:", len(jobs_data))
 
             jobs = []
 
@@ -412,9 +462,13 @@ class JobBoard(APIView):
                 )
 
                 if not apply_url:
-                    options = job.get("apply_options", [])
+                    options = job.get("apply_options") or []
+
                     if options:
-                        apply_url = options[0].get("apply_link", "")
+                        apply_url = options[0].get(
+                            "apply_link",
+                            ""
+                        )
 
                 jobs.append({
 
@@ -460,7 +514,6 @@ class JobBoard(APIView):
                         or "",
 
                     "apply_url": apply_url
-
                 })
 
             return Response({
@@ -468,12 +521,29 @@ class JobBoard(APIView):
                 "all_jobs": jobs
             })
 
+        except requests.exceptions.Timeout:
+
+            print("JSEARCH TIMEOUT")
+
+            return Response({
+                "error": "Job search took too long. Please try again."
+            }, status=504)
+
+        except requests.exceptions.RequestException as e:
+
+            print("REQUEST ERROR:", str(e))
+
+            return Response({
+                "error": "Unable to connect to the job search service."
+            }, status=502)
+
         except Exception as e:
+
+            print("JOB BOARD ERROR:", str(e))
+
             return Response({
                 "error": str(e)
             }, status=500)
-       
-        
                
 class Notification(APIView):
     def post(self,request):
