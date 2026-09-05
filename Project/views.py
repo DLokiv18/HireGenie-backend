@@ -392,11 +392,12 @@ class JobBoard(APIView):
             )
 
             data = response.json()
+           
             
             if data.get("status") != "OK":
                 return Response(data)
 
-            jobs_data = data.get("data", {}).get("jobs", [])
+            jobs_data = data.get("data", [])
 
             jobs = []
 
