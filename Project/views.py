@@ -357,7 +357,7 @@ class JobTracker(APIView):
 class JobBoard(APIView):
     def post(self,request):
         try:
-            Skills = request.data.get("skill")
+            Skills = request.data.get("Skills")
             Location = request.data.get("Location")
             Freshness = request.data.get("Freshness")
             Experience = request.data.get("Experience")
