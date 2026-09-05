@@ -357,36 +357,92 @@ class JobTracker(APIView):
 class JobBoard(APIView):
     def post(self,request):
         try:
+            # -----------------------------------------
+            # 1. Get data from React frontend
+            # -----------------------------------------
+
             Skills = request.data.get("Skills")
             Location = request.data.get("Location")
             Freshness = request.data.get("Freshness")
             Experience = request.data.get("Experience")
 
-            # Validate required fields
+            # -----------------------------------------
+            # 2. Validate required fields
+            # -----------------------------------------
+
             if not Skills:
-                return Response({
-                    "error": "Skill is required."
-                }, status=400)
+                return Response(
+                    {
+                        "error": "Skill is required."
+                    },
+                    status=400
+                )
 
             if not Location:
-                return Response({
-                    "error": "Location is required."
-                }, status=400)
+                return Response(
+                    {
+                        "error": "Location is required."
+                    },
+                    status=400
+                )
+
+            # -----------------------------------------
+            # 3. Freshness
+            # -----------------------------------------
 
             if not Freshness:
-                Freshness = "anytime"
+                Freshness = "all"
             else:
-                Freshness = str(Freshness).lower()
+                Freshness = str(Freshness).lower().strip()
 
-            # Build query
-            if str(Experience) == "0":
-                query = f"{Skills} Fresher jobs in {Location}"
+            # JSearch allowed values:
+            # all, today, 3days, week, month
 
-            elif str(Experience) == "1":
-                query = f"{Skills} 1 year experience jobs in {Location}"
+            allowed_freshness = [
+                "all",
+                "today",
+                "3days",
+                "week",
+                "month"
+            ]
+
+            if Freshness not in allowed_freshness:
+                Freshness = "all"
+
+            # -----------------------------------------
+            # 4. Experience
+            # -----------------------------------------
+
+            Experience = str(Experience).strip() if Experience else "0"
+
+            # -----------------------------------------
+            # 5. Build JSearch query
+            # -----------------------------------------
+
+            query = f"{Skills} jobs in {Location}"
+
+            # -----------------------------------------
+            # 6. Experience filter
+            # -----------------------------------------
+
+            if Experience == "0":
+
+                # Fresher
+                job_requirements = "no_experience"
+
+            elif Experience == "1":
+
+                # 1 year / entry-level
+                job_requirements = "under_3_years_experience"
 
             else:
-                query = f"{Skills} {Experience} years experience jobs in {Location}"
+
+                # For 2+ years
+                job_requirements = "under_3_years_experience"
+
+            # -----------------------------------------
+            # 7. JSearch API
+            # -----------------------------------------
 
             url = "https://jsearch.p.rapidapi.com/search-v2"
 
@@ -394,13 +450,22 @@ class JobBoard(APIView):
                 "query": query,
                 "country": "in",
                 "num_pages": "1",
-                "date_posted": Freshness
+                "date_posted": Freshness,
+                "job_requirements": job_requirements
             }
+
+            # -----------------------------------------
+            # 8. Headers
+            # -----------------------------------------
 
             headers = {
                 "x-rapidapi-key": settings.RAPIDAPI_KEY,
                 "x-rapidapi-host": "jsearch.p.rapidapi.com"
             }
+
+            # -----------------------------------------
+            # 9. Send request to JSearch
+            # -----------------------------------------
 
             response = requests.get(
                 url,
@@ -409,130 +474,216 @@ class JobBoard(APIView):
                 timeout=30
             )
 
-            # Check HTTP status
+            # -----------------------------------------
+            # 10. Check HTTP status
+            # -----------------------------------------
+
             if response.status_code != 200:
-                return Response({
-                    "error": "JSearch API request failed",
-                    "status_code": response.status_code,
-                    "details": response.text
-                }, status=response.status_code)
 
-            # Convert response to JSON
+                return Response(
+                    {
+                        "error": "JSearch API request failed",
+                        "status_code": response.status_code,
+                        "details": response.text
+                    },
+                    status=response.status_code
+                )
+
+            # -----------------------------------------
+            # 11. Convert response to JSON
+            # -----------------------------------------
+
             data = response.json()
-            
-            # TEMPORARY: See exactly what JSearch returns
-            return Response({
-            "jsearch_raw": data
-            })
 
+            # -----------------------------------------
+            # 12. Check JSearch status
+            # -----------------------------------------
 
-            # Check JSearch response
             if data.get("status") != "OK":
-                return Response({
-                    "error": "JSearch API returned an error",
-                    "details": data
-                }, status=400)
 
-            # IMPORTANT:
-            # JSearch returns data as a LIST of jobs
-            jobs_data = data.get("data", [])
+                return Response(
+                    {
+                        "error": "JSearch API returned an error",
+                        "details": data
+                    },
+                    status=400
+                )
+
+            # -----------------------------------------
+            # 13. Get jobs
+            #
+            # JSearch v5 response:
+            #
+            # data
+            #   └── jobs
+            #        ├── job 1
+            #        ├── job 2
+            #        └── job 3
+            # -----------------------------------------
+
+            jobs_data = data.get("data", {}).get("jobs", [])
+
+            # -----------------------------------------
+            # 14. Prepare jobs list
+            # -----------------------------------------
 
             jobs = []
 
             for job in jobs_data:
 
-                # Make sure job itself is a dictionary
                 if not isinstance(job, dict):
                     continue
 
+                # -------------------------------------
                 # Apply URL
-                apply_url = (
-                    job.get("job_apply_link")
-                    or job.get("applyLink")
-                    or job.get("jobUrl")
-                    or ""
-                )
+                # -------------------------------------
 
-                # Check apply_options safely
+                apply_url = job.get("job_apply_link") or ""
+
+                # If direct apply link is missing,
+                # check apply_options
                 if not apply_url:
+
                     options = job.get("apply_options", [])
 
                     if isinstance(options, list):
+
                         for option in options:
 
                             if isinstance(option, dict):
-                                apply_url = option.get(
-                                    "apply_link", ""
+
+                                apply_url = (
+                                    option.get("apply_link")
+                                    or ""
                                 )
 
                                 if apply_url:
                                     break
 
-                jobs.append({
+                # -------------------------------------
+                # Salary
+                # -------------------------------------
 
-                    "company":
-                        job.get("employer_name")
-                        or job.get("companyName")
-                        or "",
+                salary = (
+                    job.get("job_salary_string")
+                    or job.get("job_min_salary")
+                    or "Not Disclosed"
+                )
 
-                    "title":
-                        job.get("job_title")
-                        or job.get("jobTitle")
-                        or "",
+                # -------------------------------------
+                # Location
+                # -------------------------------------
 
-                    "location":
-                        job.get("job_city")
-                        or job.get("locationName")
-                        or "",
+                city = job.get("job_city") or ""
+                state = job.get("job_state") or ""
+                country = job.get("job_country") or ""
 
-                    "employment_type":
-                        job.get("job_employment_type")
-                        or job.get("jobType")
-                        or "",
+                location_parts = [
+                    city,
+                    state,
+                    country
+                ]
 
-                    "salary":
-                        job.get("job_salary_string")
-                        or job.get("job_salary")
-                        or job.get("salary")
-                        or "Not Disclosed",
+                location_parts = [
+                    x for x in location_parts if x
+                ]
 
-                    "portal":
-                        job.get("job_publisher")
-                        or job.get("source")
-                        or "",
+                job_location = ", ".join(location_parts)
 
-                    "description":
-                        job.get("job_description")
-                        or job.get("description")
-                        or "",
+                # -------------------------------------
+                # Add job
+                # -------------------------------------
 
-                    "posted":
-                        job.get("job_posted_at")
-                        or job.get("postedDate")
-                        or "",
+                jobs.append(
+                    {
+                        "company": (
+                            job.get("employer_name")
+                            or ""
+                        ),
 
-                    "apply_url": apply_url
-                })
+                        "title": (
+                            job.get("job_title")
+                            or ""
+                        ),
 
-            return Response({
-                "recommended_jobs": jobs[:5],
-                "all_jobs": jobs
-            })
+                        "location": job_location,
+
+                        "employment_type": (
+                            job.get("job_employment_type")
+                            or ""
+                        ),
+
+                        "salary": salary,
+
+                        "portal": (
+                            job.get("job_publisher")
+                            or ""
+                        ),
+
+                        "description": (
+                            job.get("job_description")
+                            or ""
+                        ),
+
+                        "posted": (
+                            job.get("job_posted_at")
+                            or ""
+                        ),
+
+                        "apply_url": apply_url
+                    }
+                )
+
+            # -----------------------------------------
+            # 15. Return response to React
+            # -----------------------------------------
+
+            return Response(
+                {
+                    "recommended_jobs": jobs[:5],
+                    "all_jobs": jobs
+                },
+                status=200
+            )
+
+        # ---------------------------------------------
+        # 16. Timeout
+        # ---------------------------------------------
 
         except requests.exceptions.Timeout:
-            return Response({
-                "error": "JSearch API request timed out."
-            }, status=504)
+
+            return Response(
+                {
+                    "error": "JSearch API request timed out."
+                },
+                status=504
+            )
+
+        # ---------------------------------------------
+        # 17. Request error
+        # ---------------------------------------------
 
         except requests.exceptions.RequestException as e:
-            return Response({
-                "error": f"JSearch API request failed: {str(e)}"
-            }, status=500)
+
+            return Response(
+                {
+                    "error": f"JSearch API request failed: {str(e)}"
+                },
+                status=500
+            )
+
+        # ---------------------------------------------
+        # 18. Any other error
+        # ---------------------------------------------
 
         except Exception as e:
-            return Response({
-                "error": str(e)
-            }, status=500)
+
+            return Response(
+                {
+                    "error": str(e)
+                },
+                status=500
+            )
       
 class Notification(APIView):
     def post(self,request):
