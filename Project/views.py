@@ -506,6 +506,10 @@ class JobBoard(APIView):
             # -----------------------------------------
 
             jobs_data = data.get("data", {}).get("jobs", [])
+            return Response({
+           "count": len(jobs_data),
+           "jobs": jobs_data
+            })
 
             jobs = []
 
