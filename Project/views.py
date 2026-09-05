@@ -393,10 +393,8 @@ class JobBoard(APIView):
             # Create search query
             if Experience == "0":
                 query = f"{Skills} Fresher jobs in {Location}"
-
             elif Experience == "1":
                 query = f"{Skills} 1 year experience jobs in {Location}"
-
             else:
                 query = f"{Skills} {Experience} years experience jobs in {Location}"
 
@@ -436,8 +434,23 @@ class JobBoard(APIView):
                     "status_code": response.status_code
                 }, status=502)
 
-            # Convert response to JSON
-            data = response.json()
+            # Convert response to JSON safely
+            try:
+                data = response.json()
+            except ValueError:
+                print("JSEARCH INVALID JSON:", response.text[:500])
+                return Response({
+                    "error": "Job search service returned an invalid response."
+                }, status=502)
+
+            # Guard against non-dict top-level responses
+            # (e.g. RapidAPI sometimes returns a plain error string
+            # like "Invalid API key" or "You are not subscribed to this API.")
+            if not isinstance(data, dict):
+                print("UNEXPECTED TOP-LEVEL RESPONSE TYPE:", type(data), "BODY:", str(data)[:500])
+                return Response({
+                    "error": "Unexpected response received from job search service."
+                }, status=502)
 
             print("JSEARCH STATUS MESSAGE:", data.get("status"))
 
@@ -445,11 +458,13 @@ class JobBoard(APIView):
             if data.get("status") != "OK":
                 print("JSEARCH API ERROR:", data)
 
+                error_msg = data.get("error", "Unable to fetch jobs.")
+                # error field itself could theoretically be a dict/list
+                if not isinstance(error_msg, str):
+                    error_msg = "Unable to fetch jobs."
+
                 return Response({
-                    "error": data.get(
-                        "error",
-                        "Unable to fetch jobs."
-                    )
+                    "error": error_msg
                 }, status=502)
 
             # Get jobs from JSearch
@@ -457,10 +472,7 @@ class JobBoard(APIView):
 
             # Make sure data is actually a list
             if not isinstance(jobs_data, list):
-                print(
-                    "UNEXPECTED DATA TYPE:",
-                    type(jobs_data)
-                )
+                print("UNEXPECTED DATA TYPE:", type(jobs_data))
 
                 return Response({
                     "error": "Unexpected response received from job search service."
@@ -493,14 +505,10 @@ class JobBoard(APIView):
                         first_option = options[0]
 
                         if isinstance(first_option, dict):
-                            apply_url = first_option.get(
-                                "apply_link",
-                                ""
-                            )
+                            apply_url = first_option.get("apply_link", "")
 
                 # Build job object
                 jobs.append({
-
                     "company":
                         job.get("employer_name")
                         or job.get("companyName")
@@ -554,27 +562,21 @@ class JobBoard(APIView):
 
         # JSearch timeout
         except requests.exceptions.Timeout:
-
             print("JSEARCH TIMEOUT")
-
             return Response({
                 "error": "Job search took too long. Please try again."
             }, status=504)
 
         # Network/request error
         except requests.exceptions.RequestException as e:
-
             print("REQUEST ERROR:", str(e))
-
             return Response({
                 "error": "Unable to connect to the job search service."
             }, status=502)
 
         # Unexpected error
         except Exception as e:
-
             print("JOB BOARD ERROR:", str(e))
-
             return Response({
                 "error": str(e)
             }, status=500)
