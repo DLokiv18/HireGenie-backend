@@ -511,7 +511,8 @@ class JobBoard(APIView):
     "querystring": querystring,
     "status_code": response.status_code,
     "jsearch_status": data.get("status"),
-    "raw_response": data
+    "raw_response": data,
+     "jobs_data":jobs_data           
 })
 
             jobs = []
