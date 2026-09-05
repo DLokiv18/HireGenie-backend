@@ -357,17 +357,14 @@ class JobTracker(APIView):
 class JobBoard(APIView):
     def post(self,request):
         try:
-            # -----------------------------------------
-            # 1. Get data from React frontend
-            # -----------------------------------------
-
+            # Get data from frontend
             Skills = request.data.get("Skills")
             Location = request.data.get("Location")
             Freshness = request.data.get("Freshness")
             Experience = request.data.get("Experience")
 
             # -----------------------------------------
-            # 2. Validate required fields
+            # Validate
             # -----------------------------------------
 
             if not Skills:
@@ -387,16 +384,13 @@ class JobBoard(APIView):
                 )
 
             # -----------------------------------------
-            # 3. Freshness
+            # Freshness
             # -----------------------------------------
 
             if not Freshness:
                 Freshness = "all"
             else:
                 Freshness = str(Freshness).lower().strip()
-
-            # JSearch allowed values:
-            # all, today, 3days, week, month
 
             allowed_freshness = [
                 "all",
@@ -410,52 +404,42 @@ class JobBoard(APIView):
                 Freshness = "all"
 
             # -----------------------------------------
-            # 4. Experience
+            # Experience
             # -----------------------------------------
 
-            Experience = str(Experience).strip() if Experience else "0"
-
-            # -----------------------------------------
-            # 5. Build JSearch query
-            # -----------------------------------------
-
-            query = f"{Skills} jobs in {Location}"
-
-            # -----------------------------------------
-            # 6. Experience filter
-            # -----------------------------------------
-
-            if Experience == "0":
-
-                # Fresher
-                job_requirements = "no_experience"
-
-            elif Experience == "1":
-
-                # 1 year / entry-level
-                job_requirements = "under_3_years_experience"
-
+            if Experience is None or Experience == "":
+                Experience = "0"
             else:
-
-                # For 2+ years
-                job_requirements = "under_3_years_experience"
+                Experience = str(Experience).strip()
 
             # -----------------------------------------
-            # 7. JSearch API
+            # JSearch Query
+            # -----------------------------------------
+
+            query = f"{Skills} in {Location}"
+
+            # -----------------------------------------
+            # JSearch URL
             # -----------------------------------------
 
             url = "https://jsearch.p.rapidapi.com/search-v2"
+
+            # IMPORTANT:
+            # Keep this exactly like the successful
+            # RapidAPI test.
+            #
+            # Do NOT add job_requirements yet.
+            # -----------------------------------------
 
             querystring = {
                 "query": query,
                 "country": "in",
                 "num_pages": "1",
-                "date_posted": Freshness,
-                "job_requirements": job_requirements
+                "date_posted": Freshness
             }
 
             # -----------------------------------------
-            # 8. Headers
+            # Headers
             # -----------------------------------------
 
             headers = {
@@ -464,7 +448,7 @@ class JobBoard(APIView):
             }
 
             # -----------------------------------------
-            # 9. Send request to JSearch
+            # Call JSearch
             # -----------------------------------------
 
             response = requests.get(
@@ -475,7 +459,7 @@ class JobBoard(APIView):
             )
 
             # -----------------------------------------
-            # 10. Check HTTP status
+            # HTTP Error
             # -----------------------------------------
 
             if response.status_code != 200:
@@ -490,13 +474,13 @@ class JobBoard(APIView):
                 )
 
             # -----------------------------------------
-            # 11. Convert response to JSON
+            # JSON
             # -----------------------------------------
 
             data = response.json()
 
             # -----------------------------------------
-            # 12. Check JSearch status
+            # JSearch status
             # -----------------------------------------
 
             if data.get("status") != "OK":
@@ -510,38 +494,34 @@ class JobBoard(APIView):
                 )
 
             # -----------------------------------------
-            # 13. Get jobs
+            # IMPORTANT
             #
             # JSearch v5 response:
             #
             # data
             #   └── jobs
-            #        ├── job 1
-            #        ├── job 2
-            #        └── job 3
+            #        ├── job
+            #        ├── job
+            #        └── job
             # -----------------------------------------
 
             jobs_data = data.get("data", {}).get("jobs", [])
 
-            # -----------------------------------------
-            # 14. Prepare jobs list
-            # -----------------------------------------
-
             jobs = []
+
+            # -----------------------------------------
+            # Process jobs
+            # -----------------------------------------
 
             for job in jobs_data:
 
                 if not isinstance(job, dict):
                     continue
 
-                # -------------------------------------
                 # Apply URL
-                # -------------------------------------
-
                 apply_url = job.get("job_apply_link") or ""
 
-                # If direct apply link is missing,
-                # check apply_options
+                # Check apply_options if needed
                 if not apply_url:
 
                     options = job.get("apply_options", [])
@@ -560,20 +540,7 @@ class JobBoard(APIView):
                                 if apply_url:
                                     break
 
-                # -------------------------------------
-                # Salary
-                # -------------------------------------
-
-                salary = (
-                    job.get("job_salary_string")
-                    or job.get("job_min_salary")
-                    or "Not Disclosed"
-                )
-
-                # -------------------------------------
                 # Location
-                # -------------------------------------
-
                 city = job.get("job_city") or ""
                 state = job.get("job_state") or ""
                 country = job.get("job_country") or ""
@@ -590,10 +557,13 @@ class JobBoard(APIView):
 
                 job_location = ", ".join(location_parts)
 
-                # -------------------------------------
-                # Add job
-                # -------------------------------------
+                # Salary
+                salary = (
+                    job.get("job_salary_string")
+                    or "Not Disclosed"
+                )
 
+                # Add job
                 jobs.append(
                     {
                         "company": (
@@ -635,7 +605,7 @@ class JobBoard(APIView):
                 )
 
             # -----------------------------------------
-            # 15. Return response to React
+            # Return jobs
             # -----------------------------------------
 
             return Response(
@@ -647,7 +617,7 @@ class JobBoard(APIView):
             )
 
         # ---------------------------------------------
-        # 16. Timeout
+        # Timeout
         # ---------------------------------------------
 
         except requests.exceptions.Timeout:
@@ -660,7 +630,7 @@ class JobBoard(APIView):
             )
 
         # ---------------------------------------------
-        # 17. Request error
+        # Request error
         # ---------------------------------------------
 
         except requests.exceptions.RequestException as e:
@@ -673,7 +643,7 @@ class JobBoard(APIView):
             )
 
         # ---------------------------------------------
-        # 18. Any other error
+        # Other error
         # ---------------------------------------------
 
         except Exception as e:
